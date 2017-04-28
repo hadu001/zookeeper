@@ -386,7 +386,7 @@ public class ClientCnxn {
         this.sessionTimeout = sessionTimeout;
         this.hostProvider = hostProvider;
         this.chrootPath = chrootPath;
-
+        // 连接超时时间并不是我们设置的sessionTimeout
         connectTimeout = sessionTimeout / hostProvider.size();
         readTimeout = sessionTimeout * 2 / 3;
         readOnly = canBeReadOnly;
@@ -448,6 +448,7 @@ public class ClientCnxn {
 
         private void queueEvent(WatchedEvent event,
                 Set<Watcher> materializedWatchers) {
+            // 出现None，但是状态没有变则直接返回
             if (event.getType() == EventType.None
                     && sessionState == event.getState()) {
                 return;
@@ -492,6 +493,7 @@ public class ClientCnxn {
            try {
               isRunning = true;
               while (true) {
+                  // 获取事件
                  Object event = waitingEvents.take();
                  if (event == eventOfDeath) {
                     wasKilled = true;
@@ -500,6 +502,7 @@ public class ClientCnxn {
                  }
                  if (wasKilled)
                     synchronized (waitingEvents) {
+                        // 等待当前时间处理完毕，再设置isRunning为false
                        if (waitingEvents.isEmpty()) {
                           isRunning = false;
                           break;
@@ -517,7 +520,7 @@ public class ClientCnxn {
        private void processEvent(Object event) {
           try {
               if (event instanceof WatcherSetEventPair) {
-                  // each watcher will process the event
+                  // each watcher will process the event每个watcher都需要处理当前的event
                   WatcherSetEventPair pair = (WatcherSetEventPair) event;
                   for (Watcher watcher : pair.watchers) {
                       try {
@@ -819,7 +822,8 @@ public class ClientCnxn {
             if (replyHdr.getXid() == -4) {
                 // -4 is the xid for AuthPacket               
                 if(replyHdr.getErr() == KeeperException.Code.AUTHFAILED.intValue()) {
-                    state = States.AUTH_FAILED;                    
+                    state = States.AUTH_FAILED;
+                    // 创建event事件给eventThread处理
                     eventThread.queueEvent( new WatchedEvent(Watcher.Event.EventType.None, 
                             Watcher.Event.KeeperState.AuthFailed, null) );            		            		
                 }
@@ -836,6 +840,7 @@ public class ClientCnxn {
                         + Long.toHexString(sessionId));
                 }
                 WatcherEvent event = new WatcherEvent();
+                // 解析事件反馈
                 event.deserialize(bbia, "response");
 
                 // convert from a server path to a client path
@@ -844,6 +849,7 @@ public class ClientCnxn {
                     if(serverPath.compareTo(chrootPath)==0)
                         event.setPath("/");
                     else if (serverPath.length() > chrootPath.length())
+                        // 只取后面的相对路径
                         event.setPath(serverPath.substring(chrootPath.length()));
                     else {
                     	LOG.warn("Got server path " + event.getPath()
@@ -1343,6 +1349,7 @@ public class ClientCnxn {
         /**
          * Callback invoked by the ClientCnxnSocket once a connection has been
          * established.
+         * 连接建立后触发该方法
          * 
          * @param _negotiatedSessionTimeout
          * @param _sessionId
@@ -1353,6 +1360,7 @@ public class ClientCnxn {
         void onConnected(int _negotiatedSessionTimeout, long _sessionId,
                 byte[] _sessionPasswd, boolean isRO) throws IOException {
             negotiatedSessionTimeout = _negotiatedSessionTimeout;
+            // 时间小于等于0，则触发关闭及其相应事件
             if (negotiatedSessionTimeout <= 0) {
                 state = States.CLOSED;
 
@@ -1362,6 +1370,7 @@ public class ClientCnxn {
                 eventThread.queueEventOfDeath();
 
                 String warnInfo;
+                // 组织提示信息，抛出session失效异常
                 warnInfo = "Unable to reconnect to ZooKeeper service, session 0x"
                     + Long.toHexString(sessionId) + " has expired";
                 LOG.warn(warnInfo);

@@ -179,6 +179,7 @@ public final class StaticHostProvider implements HostProvider {
             }
         }
 
+        // 判断和myServer的相等性，确定myServer是否在新配置里
         for (InetSocketAddress addr : resolvedList) {
             if (addr.getPort() == myServer.getPort()
                     && ((addr.getAddress() != null
@@ -207,7 +208,7 @@ public final class StaticHostProvider implements HostProvider {
         int numOld = oldServers.size();
         int numNew = newServers.size();
 
-        // number of servers increased
+        // number of servers increased 说明有新的server加入
         if (numOld + numNew > this.serverAddresses.size()) {
             if (myServerInNewConfig) {
                 // my server is in new config, but load should be decreased.
@@ -234,6 +235,7 @@ public final class StaticHostProvider implements HostProvider {
                 // stay with this server and do nothing special
                 reconfigMode = false;
             } else {
+                // 这里的(this.serverAddresses.size() - numOld)是否有可能为负值？
                 pOld = ((float) (numOld * (this.serverAddresses.size() - (numOld + numNew))))
                         / ((numOld + numNew) * (this.serverAddresses.size() - numOld));
                 pNew = 1 - pOld;

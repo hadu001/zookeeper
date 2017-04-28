@@ -423,6 +423,7 @@ public class ZooKeeper implements AutoCloseable {
             // when sees failure from server.
             if (rc == Code.OK.intValue() || (local && rc != Code.OK.intValue())) {
                 // Remove all the watchers for the given path
+                // 如果watch为null，则删除所有当前路径的watchers
                 if (watcher == null) {
                     Set<Watcher> pathWatchers = pathVsWatcher.remove(path);
                     if (pathWatchers != null) {
@@ -462,6 +463,7 @@ public class ZooKeeper implements AutoCloseable {
             switch (type) {
             case None:
                 result.add(defaultWatcher);
+                // 这里控制了在非SyncConnected状态下如果disableAutoWatchReset为ture的清空处理，SyncConnected状态为None不会清空
                 boolean clear = disableAutoWatchReset && state != Watcher.Event.KeeperState.SyncConnected;
                 synchronized(dataWatches) {
                     for(Set<Watcher> ws: dataWatches.values()) {
@@ -493,6 +495,7 @@ public class ZooKeeper implements AutoCloseable {
                 return result;
             case NodeDataChanged:
             case NodeCreated:
+                // 客户端的watcher也是一次性的，这里用的是remove方法
                 synchronized (dataWatches) {
                     addTo(dataWatches.remove(clientPath), result);
                 }
@@ -555,6 +558,7 @@ public class ZooKeeper implements AutoCloseable {
             if (shouldAddWatch(rc)) {
                 Map<String, Set<Watcher>> watches = getWatches(rc);
                 synchronized(watches) {
+                    // 取出路径下的watch
                     Set<Watcher> watchers = watches.get(clientPath);
                     if (watchers == null) {
                         watchers = new HashSet<Watcher>();
@@ -1506,30 +1510,31 @@ public class ZooKeeper implements AutoCloseable {
             CreateMode createMode, Stat stat, long ttl)
             throws KeeperException, InterruptedException {
         final String clientPath = path;
-        PathUtils.validatePath(clientPath, createMode.isSequential());
-        EphemeralType.validateTTL(createMode, ttl);
+        PathUtils.validatePath(clientPath, createMode.isSequential());//路径验证
+        EphemeralType.validateTTL(createMode, ttl);// ttl验证
 
-        final String serverPath = prependChroot(clientPath);
+        final String serverPath = prependChroot(clientPath);//服务器路径解析
 
-        RequestHeader h = new RequestHeader();
-        setCreateHeader(createMode, h);
-        Create2Response response = new Create2Response();
+        RequestHeader h = new RequestHeader();// 请求头对象
+        setCreateHeader(createMode, h);// 设置请求类型
+        Create2Response response = new Create2Response();//请求响应体
         if (acl != null && acl.size() == 0) {
             throw new KeeperException.InvalidACLException();
         }
-        Record record = makeCreateRecord(createMode, serverPath, data, acl, ttl);
-        ReplyHeader r = cnxn.submitRequest(h, record, response, null);
+        Record record = makeCreateRecord(createMode, serverPath, data, acl, ttl);// 封装请求record
+        ReplyHeader r = cnxn.submitRequest(h, record, response, null);// 提交请求
+        // 这个里面比较有意思，可以看看一个系统设计的状态码和code如何设置及交互
         if (r.getErr() != 0) {
             throw KeeperException.create(KeeperException.Code.get(r.getErr()),
                     clientPath);
         }
         if (stat != null) {
-            DataTree.copyStat(response.getStat(), stat);
+            DataTree.copyStat(response.getStat(), stat); // copy服务器响应的节点状态
         }
         if (cnxn.chrootPath == null) {
             return response.getPath();
         } else {
-            return response.getPath().substring(cnxn.chrootPath.length());
+            return response.getPath().substring(cnxn.chrootPath.length());// 如果带有chroot，需要去掉chroot
         }
     }
 
@@ -1620,7 +1625,7 @@ public class ZooKeeper implements AutoCloseable {
         Create2Response response = new Create2Response();
         Record record = makeCreateRecord(createMode, serverPath, data, acl, ttl);
         cnxn.queuePacket(h, r, record, response, cb, clientPath,
-                serverPath, ctx, null);
+                serverPath, ctx, null);// 和同步方法这里有区别，具体细节在cnxn里，后续分析
     }
 
     /**
